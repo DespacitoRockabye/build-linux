@@ -1,6 +1,11 @@
 Build yourself a Linux
 ======================
 
+我的介绍
+--------
+自学linux操作系统，但市面上大多数书籍和教程都是针对0.11版本，许多部分描述已经大大落后现在的实际情况，正巧在github上看到这个项目，所以fork过来学习一下。
+因为只是刚刚接触linux和操作系统，所以以学习和翻译为主。
+
 Introduction
 ------------
 
@@ -36,6 +41,9 @@ some build tools. Installing ``build-essential`` on Ubuntu (or ``base-devel`` on
 Arch Linux) will almost give you everything you need. You'll also need to
 install ``bc`` for some reason.
 
+使用命令解压
+建立内核的工作我们显然需要编译器和其他工具，安装ubuntu中的build-essential就够用，同时你需要安装bc
+
 The next step is configuring your build, inside the untarred directory you do
 ``make defconfig``. This will generate a default config for your current cpu
 architecture and put it in ``.config``. You can edit it directly with a text
@@ -53,6 +61,13 @@ build our kernel. Don't forget to add ``-jN`` with `N` the number of cores
 because this might take a while. When it's done, it should tell you where your
 finished kernel is placed. This is usually ``arch/x86/boot/bzImage`` in the
 linux source directory for Intel computers.
+
+下一步是设置你的build，在未解压目录内执行命令 make defconfig。
+这将针对你所用的cpu架构生成一个默认的配置文件并存为.config
+你可以直接通过文字编辑器修改它，但最好通过命令make nconfig（这里需要用到ubuntu的libncurses5-dev）来修改，因为这样可以处理所有启用特性的依赖关系。在这里你可以用空格键来启用/关闭特性和设备驱动
+*表示启用，M表示将会被编译到一个分离的内核模块中，这是内核的一部分但将会被放到一个单独的文件，并可以根据需求动态地加载和卸载。缺省设置对基本使用来说就够用了，比如在一个虚拟机中运行。
+我们的情况是不是很想处理内核模块，所以执行这个命令sed "s/=m/=y/" -i .config。完成后可以简单地执行make来构建内核。不要忘记添加 -jN， N是核的数量。
+等它完成后，应该会告知内核的保存目录，对Intel电脑来说，一般是在linux源目录的 arch/x86/boot/bzImage 文件夹中。
 
 Other useful/interesting ways to configure the kernel are:
 
@@ -93,9 +108,13 @@ and a lot more, like utilities from ``util-linux`` so we can do stuff like
 you expect to be present on a Linux system, except they are a slightly
 simplified version of the regular ones.
 
+busybox包含了常用命令，就像util-linux 中的实用程序一样，一般busybox中的工具就够用了，虽然可能是正常版本的略微简化版本。
+
 You can get the source from [busybox.net](https://busybox.net/). They also
 provide prebuilt binaries which will do just fine for most use-cases. But just
 to be sure we will build our own version.
+
+从busybox的官网上可以下载到二进制文件，这些可以适用于大多数应用情况。但需要明确我们将会构造我们自己的版本。
 
 Configuring busybox is very similar to configuring the kernel. It also uses a
 ``.config`` file and you can do ``make defconfig`` to generate one and ``make
@@ -105,6 +124,8 @@ repo with the name ``bb-config``. Like the ``defconfig`` version, this has most
 utilities enabled but with a few differences like statically linking all
 libraries.  Building busybox is again done by simply doing ``make``, but before
 we do this, let's look into ``musl`` first.
+
+设置busybox跟设置内核非常相似。使用 .config 文件或执行 make defconfig 命令来生成一个文件， 然后执行 make menuconfig 来用图形化界面设置它。但我们将用我提供的设置文件，从arch linux偷的。你可以在git的仓库找到这个名为 bb-config的文件。构建busybox可以简单地再make 一下，但在做这个之前，我们要先看一下 musl
 
 The C Standard Library
 ----------------------
@@ -116,6 +137,9 @@ pay attention to any of this, we can just statically link the one we are using
 right now which is probably 'glibc'. This means the following part is optional.
 But I thought this would make it more interesting and it also makes us able to
 build smaller binaries.
+
+c标准库比你想象的更重要。它提供一些使用的功能和对内核的接口。但它也处理DNS请求并提供动态链接。 我们不需要花时间去看它的每一部分，可以把我们现在用的功能静态链接进去，这个可能是 glibc。
+这可能意味着下面说的部分是可选的，但我认为这可能更有趣并且可以支持我们的内核做的更小。
 
 That's because we are going to use [musl](https://www.musl-libc.org/), which is
 a lightweight libc implementation. You can get it by installing ``musl-tools``
@@ -136,6 +160,8 @@ significantly smaller because we are statically linking a much smaller libc.
 Be aware that even though there is a libc standard, musl is not always a
 drop-in replacement for glibc if the application you're compiling uses glibc
 specific things.
+
+值得注意的是，尽管有一个libc标准，musl并不永远可以随便替换glibc的，尤其在你编译的应用程序使用了glibc的某些独特的东西时。
 
 Building the Disk Image
 -----------------------
