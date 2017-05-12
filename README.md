@@ -169,14 +169,16 @@ Building the Disk Image
 Installing an OS on a file instead of a real disk complicates things but this
 makes development and testing easier.
 
-So let's start by allocating a new file of size 100M by doing ``fallocate -l100M
-image``(some distros don't have ``fallocate`` so you can do ``dd if=/dev/zero
-of=image bs=1M count=100`` instead). And then we format it like we would format
-a disk with ``fdisk image``. It automatically creates an MBR partition table for
+在文件上安装os比在一块儿真实的硬盘上安装要麻烦，但是这让开发和测试变得简单。
+
+So let's start by allocating a new file of size 100M by doing ``fallocate -l100M image``(some distros don't have ``fallocate`` so you can do ``dd if=/dev/zero of=image bs=1M count=100`` instead). And then we format it like we would format a disk with ``fdisk image``. It automatically creates an MBR partition table for
 us and we'll create just one partition filling the whole image by pressing 'n' and
 afterwards just use the default options for everything and keep spamming 'enter'
 until you're done. Finally press 'w' exit and to write the changes to the
 image.
+
+让我们从分配一个100M的新文件开始，执行命令 fallocate -l100M image （有些发行版需要用另一个命令 dd if=/dev/zero of=image bs=1M count=100）。 然后我们通过命令 fdisk image 来格式化硬盘， 这个命令将自动创建一个MBR分区表，按 n 键创建填充整个镜像的分区，后面使用默认配置即可。最后按 w 退出并写入镜像。
+
 ```bash
 $ fdisk image
 
@@ -210,19 +212,30 @@ image. Loop devices are block devices (like actual disks) that in our case
 point to a file instead of real hardware. For this we need root so sudo up
 with ``sudo su`` or however you prefer to gain root privileges and afterwards
 run:
+
+为了与我们的新分区交互，我们需要给镜像做一个环形设备。环形设备是块设备，在我们这种情况中指向一个文件而不是一块真正的硬件。这里我们需要管理权限所以用 sudo su 或者随便什么方式来获得root权限然后继续执行
+
 ```bash
 $ losetup -P -f --show image
 /dev/loop0
 ```
+
 The loop device probably ends with a 0 but it could be different in your case.
 The ``-P`` makes sure the partition also gets a loop device, ``/dev/loop0p1`` in
 my case. Let's make a filesystem on it.
+
+环形设备可能以0结束但可能在你的情况下不一定，-P 选项确认分区也得到一个环形设备，接下来让我们在其中制作一个文件系统。
+
 ```bash
 $ mkfs.ext4 /dev/loop0p1
 ```
+
 If you want to use something other than ext4, be sure to enable it when
 configuring your kernel. Now that we have done that, we can mount it and start
 putting everything in place.
+
+如果你想使用别的文件系统而不是ext4，请确认在配置你的内核时将它使能。现在我们可以挂载它并可以在上面随便做什么了
+
 ```bash
 $ mkdir image_root
 $ mount /dev/loop0p1 image_root
@@ -233,6 +246,9 @@ And while we're at it, we can create the rest of the file system hierarchy. This
 is actually standardized and applications often assume this is the way you're
 doing it, but you can often do what you want. You can find more info
 [here](http://www.pathname.com/fhs/).
+
+做好后我们可以创建剩下的文件系统层次结构。这实际上是标准化的，应用程序通常认为你是按照标准做，但你也可以做你想做的。
+
 ```bash
 $ mkdir -p {dev,etc,home,lib}
 $ mkdir -p {mnt,opt,proc,srv,sys}
@@ -251,6 +267,8 @@ so: ``busybox ls --help``. But busybox also detects by what name it is called
 and then executes that utility. So you can put symlinks for each utility and
 busybox can figure out which utility you want by the symlink's name.
 
+你可以通过命令的方式调用每个busybox的实用程序，像 busybox ls --help 。但busybox还可以通过检测调用名然后执行那个实用程序。所以你可以为每个实用程序设置符号链接然后busybox就可以分辨出来你想要哪个实用程序了。
+
 ```bash
 for util in $(./usr/bin/busybox --list-full); do
   ln -s /usr/bin/busybox $util
@@ -261,6 +279,10 @@ absolute path, but they work just fine from within the booted system.
 
 Lastly, we'll copy some files from ``../filesystem`` to the image that will be
 of some use to us later.
+
+这些符号链接可能在系统外就不对了，因为绝对路径的问题，但是他们在引导好的系统内是可以正常使用的
+最后，我们从 ../filesystem 中复制一些数据到镜像中，后面我们会用到。
+
 ```bash
 $ cp ../filesystem/{passwd,shadow,group,issue,profile,locale.sh,hosts,fstab} etc
 $ install -Dm755 ../filesystem/simple.script usr/share/udhcpc/default.script
@@ -271,6 +293,8 @@ These are the basic configuration files for a UNIX system. The .script file is
 required for running a dhcp client, which we'll get to later. The keymap file is
 a binary keymap file I use for belgian azerty.
 
+这些是一个unix系统的基础文件，.script文件是使用DHCP客户端所需要的，这些我们后面会用。keymap文件是一个我之前用在belgian azerty项目中的二进制keymap文件
+
 The Boot Loader
 ---------------
 
@@ -278,6 +302,9 @@ The next step is to install the bootloader - the program that loads our kernel i
 memory and starts it. For this we use GRUB, one of the most widely used
 bootloaders. It has a ton of features but we are going to keep it very simple.
 Installing it is very simple, we just do this:
+
+下一个步骤是安装bootloader，这部分负责把我们的内核加载到内存中并启动它。为了完成这个我们使用GRUB，一个应用非常广泛的bootloader之一。它拥有许多特性但我们要让他保持简洁。安装过程很简单，只要：
+
 ```bash
 grub-install --modules=part_msdos \ 
              --target=i386-pc \
@@ -286,6 +313,8 @@ grub-install --modules=part_msdos \
 ```
 Ubuntu users might need to install ``grub-pc-bin`` first if they are on an EFI
 system.
+
+EFI系统上的Ubuntu用户可能需要先安装 grub-pc-bin
 
 The ``--target=i386-pc`` tells grub to use the simple msdos MBR bootloader. This
 is often the default, but this can vary from machine to machine so you better
@@ -296,12 +325,19 @@ use ``losetup -P``, grub doesn't detect the root device correctly and doesn't
 think it needs to support msdos partition tables and won't be able to find the
 root partition.
 
+--target=i386-pc 告诉grub使用最简单的 msdos MBR bootloader，这个设置通常是缺省的，但是也跟机器情况有关，这里最好确认一下。
+--boot-directory 选项告诉grub把grub文件安装到镜像中的/boot目录中而不是你现在操作系统的/boot
+--modules=part_msdos 是一个针对ubuntu下grub的bug的解决方案。当你使用losetup -P 命令时，grub不能正确检测跟设备，并且不认为它需要支持msdos分区表，并最终不能找到根分区。
+
 Now we just have to configure grub and then our system should be able to boot.
 This basically means telling grub how to load the kernel. This config is located
 at ``boot/grub/grub.cfg`` (some distro's use ``/boot/grub2``). This file needs
 to be created first, but before we do that, we need to figure something out
 first. If you look at ``/proc/cmdline`` on your own machine you might see
 something like this:
+
+现在我们只需要配置grub，我们的系统应该就可以引导成功。这基本上意味着告诉grub如何去加载内核。这个配置文件在boot/grub/grub.cfg （有些版本在/boot/grub2），这个文件需要先创建它，但是在我们创建之前，我要先提醒一下，如果你看/proc/cmdline 我们可以看到下面的内容：
+
 ```bash
 $ cat /proc/cmdline
 BOOT_IMAGE=/boot/vmlinuz-4.4.0-71-generic root=UUID=83066fa6-cf94-4de3-9803-ace841e5066c ro
