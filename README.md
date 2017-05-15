@@ -146,6 +146,9 @@ a lightweight libc implementation. You can get it by installing ``musl-tools``
 on Ubuntu or simply ``musl`` on Arch Linux. Now we can link binaries to musl
 instead of glibc by using ``musl-gcc`` instead of ``gcc``.
 
+我们将使用 musl， 这是个轻量级的libc实现。你可以通过在ubuntu上安装 musl-tools 或在Arch linux上执行 musl。
+现在我们可以将二进制文件链接上musl用以代替glibc，这个过程通过命令执行 musl-gcc， 而不是gcc。
+
 Before we can build busybox with musl, we need sanitized kernel headers for use
 with musl. You get that from [this github
 repo](https://github.com/sabotage-linux/kernel-headers). And set
@@ -153,6 +156,8 @@ repo](https://github.com/sabotage-linux/kernel-headers). And set
 ``CONFIG_EXTRA_CFLAGS="-I/path/to/kernel-headers/x86_64/include"`` to use them.
 Obviously change ``/path/to`` to the location where you put the headers repo,
 which can be relative from within the busybox source directory.
+
+在我们用musl build busybox之前，我们需要清理内核的headers。
 
 If you run ``make CC=musl-gcc`` now, the busybox executable will be
 significantly smaller because we are statically linking a much smaller libc.
@@ -336,7 +341,7 @@ to be created first, but before we do that, we need to figure something out
 first. If you look at ``/proc/cmdline`` on your own machine you might see
 something like this:
 
-现在我们只需要配置grub，我们的系统应该就可以引导成功。这基本上意味着告诉grub如何去加载内核。这个配置文件在boot/grub/grub.cfg （有些版本在/boot/grub2），这个文件需要先创建它，但是在我们创建之前，我要先提醒一下，如果你看/proc/cmdline 我们可以看到下面的内容：
+现在我们只需要配置grub，我们的系统应该就可以引导成功。这基本上意味着告诉grub如何去加载内核。这个配置文件在 boot/grub/grub.cfg （有些版本在/boot/grub2），这个文件需要先创建它，但是在我们创建之前，我要先提醒一下，如果你看/proc/cmdline 我们可以看到下面的内容：
 
 ```bash
 $ cat /proc/cmdline
@@ -358,6 +363,10 @@ different. So we need something more robust. I suggest we use the PARTUUID. It's
 a unique id for the partition (and not the filesystem like UUID) and this is a
 somewhat recent addition to the kernel for msdos partition tables (it's actually
 a GPT thing). We'll find the id like this:
+
+这些是当你引导时需要传递给内核的参数，root选项告诉我们的内核哪个设备保存着根文件系统，也就是需要被安装在 ‘/’处的文件系统。 内核需要知道这个否则将无法引导。有多重不同的办法来识别你的根文件系统，使用UUID是一个好的方式，因为它对于你执行 mkfs 生成的文件系统来说是独特的识别符。使用UUID的方法带来的问题是内核并不完全支持它，因为它依赖于文件系统的实现。这会对你的系统产生影响因为它使用了一个initramfs，但我们现在不能使用它。
+我们可以执行 root=/dev/sda1 ，这条命令可能有效，但它有其他的问题。‘sda’中的‘a’依赖于bios加载硬盘的顺序，这在你添加新硬盘时会有变化，或者是其他一些情况也会有变化。或者当你使用不同类型的接口/硬盘时，这个命令可能产生完全不同的结果。
+所以我们需要某种鲁棒性更强的方式。我建议我们使用PARTUUID，它对分区来说是个独特的id（而不是像UUID一样是针对文件系统的），这是最近针对msdos分区表（实质上是一个GPT类的东西）的内核修改。我们可以这样获取id:
 ```bash
 $ fdisk -l ../image | grep "Disk identifier"
 Disk identifier: 0x4f4abda5
@@ -365,6 +374,8 @@ Disk identifier: 0x4f4abda5
 Then we drop the 0x and append the partition number as two digit hexidecimal. An
 MBR only has 4 partitions max so that it's hexidecimal or decimal doesn't really
 matter, but that's what the standard says. So the grub.cfg should look like this:
+
+然后我们删除0x并将分区号附加为两位16进制。一个MBR最多只有4个分区，所以十六进制还是十进制并不影响，但是标准这么说了。所以grub.cfg看起来就是这样子:
 ```
 linux /boot/bzImage quiet init=/bin/sh root=PARTUUID=4f4abda5-01
 boot
@@ -380,6 +391,10 @@ running.
 So now we should be able to boot the system. You can umount the image, exit root
 and start a VM to test it out. The simplest way of doing this is using QEMU.
 The Ubuntu package is ``qemu-kvm``, and just ``qemu`` on Arch Linux.
+
+defconfig 内核实际上是一个debug 类型的build，所以它非常冗长，为了让他停止你可以添加 quiet 选项。这个将停止它打印控制台信息的过程。你可以通过 dmesg 命令来阅读这些控制台信息。
+init 指定了第一个进程，这个进程将在内核被引导后启动。现在我们只是开启了一个shell，当它运行起来以后我们将配置一个真正的init。
+所以现在我们应该可以引导系统了，你可以卸载镜像，退出引导过程并开启一个虚拟机来测试它。最简单的方法是使用QEMU。在ubuntu上使用命令 qemu-kvm 或在Arch Linux上使用 qemu命令。
 ```bash
 $ cd ../
 $ umount image_root
@@ -388,9 +403,11 @@ $ qemu-system-x86_64 -enable-kvm image
 ```
 And if everything went right you should now be dropped in a shell in our
 homemade operating system.
+如果一切顺利，你现在应该进入了我们自制操作系统的一个shell中。
 
 **Side note:** When using QEMU, you don't actually need a bootloader. You can
 tell QEMU to load the kernel for you.
+在使用QEMU时，你不是真正需要一个bootloader，你可以让QEMU来为你加载内核。
 ```bash
 $ qemu-system-x86_64 -enable-kvm \
                      -kernel bzImage \
@@ -402,6 +419,7 @@ Where ``bzImage`` points to the kernel you built on your system, not the image.
 and ``-append`` specifies the kernel arguments (don't forget the quotes). This
 could be useful when you would like to try different kernel parameters without
 changing ``grub.cfg`` every time.
+其中 bzImage指向你构建的内核，而不是你的镜像。-append 指定内核参数（不要忘记引用？？引导？？）。这在你想尝试不同内核参数但不想每次都改变grub时是很好用的。
 
 PID 1: /sbin/init
 ---------------
@@ -414,9 +432,13 @@ your system. A second and less important consequence of being PID 1 is when
 another process 'reparents', e.g. when a process forks to the background, PID 1
 will become the parent process.
 
+第一个被内核开启的进程的进程号为1。这不仅是一个数字，它还对这个进程有一些特殊的的影响。最重要的是当这个进程结束时，你将面对一个内核惊恐？？。PID 1可以永远不结束或退出。对于PID 1来说，一个不怎么重要的结果是，当另外一个进程reparents时，例如一个进程fork到它的background，PID 1将变成父进程。
+
 This implies that PID 1 has a special role to fill in our operating system.
 Namely that of starting everything, keeping everything running, and shutting
 everything down because it's the first and last process to live.
+
+这意味着PID在我们的操作系统中扮演一个特殊的角色，我们称之为一切的开始，保持一切运行，并结束一切事情，因为这是第一个也是最后一个运行的程序
 
 This also makes this ``init`` process very suitable to start and manage services
 as is the case with the very common ``sysvinit`` and the more modern
@@ -425,10 +447,15 @@ the burden of service supervision, which is the case with the
 [runit](http://smarden.org/runit/)-like ``init`` that is included with
 ``busybox``.
 
+这也造成了这个 init 进程非常适合开启和管理服务，就像非常常见的 sysvinit和更现代的systemd。但这不是绝对必要的，其他进程也可以承担服务监督的责任，runit中列举了这么个例子，就像init被包含在busybox中一样。
+
 Unless you passed the ``rw`` kernel parameter the root filesystem is mounted as
 read-only. So before we can make changes to our running system we have to
 remount it as read-write first. Before we can do any mounting at all we have
 to mount the ``proc`` pseudo filesystem that serves as an interface to kernel.
+
+除非你传递了 rw 内核参数，否则根文件系统会被配置成只读。所以在修改我们正在运行的操作系统之前，我们必须重新设置它为可读可写。
+在我们在做任何安装之前，我们必须安装 proc 伪文件系统，把他作为内核的接口
 ```bash
 $ mount -t proc proc /proc
 $ mount / -o remount,rw
@@ -437,17 +464,22 @@ $ mount / -o remount,rw
 ``busybox`` provides only two ways of editing files: ``vi`` and ``ed``. If you
 are not confortable using either of those you could always shutdown the VM,
 mount the image again, and use your favorite text editor on your host machine.
+busybox只提供了两种方式来编辑文件，vi和ed。如果你对这两种编辑方式都不熟悉的话，你可以关闭虚拟机，重新安装镜像并在你的主机上使用你喜欢的文字编辑器
 
 If you don't use a qwerty keyboard, you might have noticed that the VM uses a
 qwerty layout as this is the default. You might want to change it to azerty with
 ``loadkmap < /usr/share/keymaps/be-latin1.bmap``. You can dump the layout you
 are using on your host machine with ``busybox dumpkmap > keymap.bmap`` in a
 virtual console (not in X) and put this on your image instead.
+如果你不适用标准的键盘，你应该注意一下虚拟机的缺省配置是传统键盘不知。你可以利用loadkmap < /usr/share/keymaps/be-latin1.bmap来把键盘布局改成azerty型。你可以通过在虚拟控制台上使用busybox dumpkmap > keymap.bmap来转存你的主机键盘配置，把这个配置存在你的镜像中。
 
 First, we'll create a script that handles the initialisation of the system
 itself (like mounting filesystems and configuring devices, etc). You could call it
 ``startup`` and put it in the ``/etc/init.d`` directory (create this first).
 Don't forget to ``chmod +x`` this file when you're done.
+
+首先，我们要创建一个脚本用来处理系统自己的初始化，就像安装文件系统和配置设备之类的操作。你可以称它为startup并把它放在/etc/init.d目录下（没有目录的话需要先创建）。不要忘记对这个文件执行chmod +x
+
 ```bash
 #!/bin/sh
 # /etc/init.d/startup
@@ -503,6 +535,8 @@ The next file is the init configuration ``/etc/inittab``. The syntax of this
 file is very similar to that of ``sysvinit``'s ``inittab`` but has several
 differences. For more information you can look at the ``examples/inittab`` file
 in the busybox source.
+另一个文件是初始化配置/etc/inittab。这个文件的语法跟sysvinit的inittab非常相似但是有几点不同。更多信息可以看examples/inittab文件，这个文件在busybox源文件里。
+
 ```inittab
 # /etc/inittab
 ::sysinit:/bin/echo STARTING SYSTEM
@@ -530,6 +564,7 @@ the shell is started as a login shell. ``/bin/login`` usually does this for us
 but we have to specify it here. Starting the shell as a login shell means that
 it configures certain things it otherwise assumes already to be configured. E.g.
 it sources ``/etc/profile``.
+init执行的第一条命令是sysinit函数，我们将把我们的startup脚本放在这里，你可以指定多个这样的函数然后他们可以按顺序执行。相同的是shutdown函数，它很明显在关机时执行。respawn函数将在sysinit后面执行，并且将在他们推出时重启。我们将放一些getty在指定的tty上。这些函数将查询你的用户名并执行/bin/login，这将询问你登录密码，如果正确的话将开启一个shell。如果你不关心用户登录和密码，取而代之的是getty执行::askfirst:-/bin/sh。askfirst跟respawn一样但是它让你先按回车。如果没有tty被指定，它将断定什么是控制台？？。-/bin/sh前的-符号意味着shell已经打开并登录了。/bin/login常常给我们完成这件事，但是我们必须在这里制定好。打开一个登录的shell意味着它将配置一些本来已经配置好的东西，例如它寻找/etc/profile
 
 We can now start our system with ``init``. You can remove the ``init=/bin/sh``
 entry in ``/boot/grub/grub.cfg`` because it defaults to ``/sbin/init``. If
@@ -538,6 +573,8 @@ you'll notice it won't do anything. This happens because normally ``reboot``
 tells the running ``init`` to reboot. You know - the ``init`` that isn't running
 right now. So we have two options, we could run ``reboot -f`` which skips the
 ``init``, or we could do this:
+现在通过init我们可以开启我们自己的系统了。你可以移除/boot/grub/grub.cfg中的init=/bin/sh，因为它对/sbin/init来说是缺省配置。如果你重启的话，你会看到一个登录页面。但如果你执行reboot命令，你将发现没有做任何事情。这种事情之所以会发生是因为一般来说reboot是重新运行init。init现在并没有运行，所以我们有两个选项，我们可以执行reboot -f来跳过init，或者我们可以做：
+
 ```bash
 $ exec init
 ```
@@ -546,6 +583,8 @@ shell process with ``init`` and our system should be properly booted now
 presenting you a login prompt.
 
 The root password should be empty so it should only ask for a username.
+因为我们刚刚用的shell是PID 1， 你可以通过init换一个shell进程，并且我们的系统应该可以正确启动了，会向你显示一个登录提示。
+root密码应该是空的，所以它可能只问一个用户名。
 
 Service Supervision
 -------------------
